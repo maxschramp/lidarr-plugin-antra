@@ -1,0 +1,22 @@
+# Build outputs
+_plugins/
+_temp/
+_output/
+_tests/
+_artifacts/
+
+# .NET build dirs
+src/**/[Bb]in/
+src/**/[Oo]bj/
+
+# VS / user files
+.vs/
+*.suo
+*.user
+*.sln.docstates
+
+# Extracted framework dirs, misc
+*.log
+logs/
+bridge.db
+.env

@@ -1,0 +1,6 @@
+<Project>
+  <!-- below net4.7.1 the new portable pdb format has no line numbers -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net462'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+</Project>
