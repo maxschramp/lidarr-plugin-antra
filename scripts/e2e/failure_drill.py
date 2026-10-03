@@ -1,8 +1,33 @@
-"""Bridge-down failure drill: run the same Test calls Lidarr's UI uses."""
+"""
+Bridge-down failure drill: run the same Test calls Lidarr's UI uses for the
+Antra indexer and the Antra download client, and print the validation
+messages. Expected states:
+
+  - bridge up:   both HTTP 200 with an empty body
+  - bridge down: both HTTP 400 with a clean "not reachable" error message
+
+Configuration via environment variables:
+  LIDARR_URL           Lidarr base URL     (default http://127.0.0.1:8688)
+  LIDARR_API_KEY       Lidarr API key      (required)
+  BRIDGE_URL           bridge base URL     (default http://127.0.0.1:8890)
+  ANTRA_LIDARR_ROOT    dev checkout root   (default C:\\antra-lidarr)
+  ANTRA_STAGING        staging dir as Lidarr sees it (default <root>\\staging)
+"""
+import os
+import sys
+
 import requests
 
-K = {"X-Api-Key": "<dev-api-key>"}
-B = "http://127.0.0.1:8688"
+ROOT = os.environ.get("ANTRA_LIDARR_ROOT", "C:\\antra-lidarr")
+LIDARR = os.environ.get("LIDARR_URL", "http://127.0.0.1:8688")
+API_KEY = os.environ.get("LIDARR_API_KEY", "")
+BRIDGE = os.environ.get("BRIDGE_URL", "http://127.0.0.1:8890")
+STAGING = os.environ.get("ANTRA_STAGING", ROOT + "\\staging")
+
+if not API_KEY:
+    sys.exit("set LIDARR_API_KEY (the dev instance's API key)")
+
+KEY = {"X-Api-Key": API_KEY}
 
 INDEXER = {
     "name": "Antra",
@@ -15,7 +40,7 @@ INDEXER = {
     "enableAutomaticSearch": True,
     "enableInteractiveSearch": True,
     "fields": [
-        {"name": "baseUrl", "value": "http://127.0.0.1:8890"},
+        {"name": "baseUrl", "value": BRIDGE},
         {"name": "bridgeApiToken", "value": ""},
         {"name": "timeoutSeconds", "value": 30},
         {"name": "earlyReleaseLimit", "value": None},
@@ -33,9 +58,9 @@ DOWNLOADCLIENT = {
     "removeCompletedDownloads": False,
     "removeFailedDownloads": False,
     "fields": [
-        {"name": "bridgeUrl", "value": "http://127.0.0.1:8890"},
+        {"name": "bridgeUrl", "value": BRIDGE},
         {"name": "bridgeApiToken", "value": ""},
-        {"name": "stagingPath", "value": "<antra-lidarr>\\staging"},
+        {"name": "stagingPath", "value": STAGING},
         {"name": "host", "value": "localhost"},
         {"name": "format", "value": "flac"},
         {"name": "sources", "value": "auto"},
@@ -43,8 +68,9 @@ DOWNLOADCLIENT = {
     ],
 }
 
+
 def existing_id(kind, name):
-    rows = requests.get(f"{B}/api/v1/{kind}", headers=K, timeout=30).json()
+    rows = requests.get(f"{LIDARR}/api/v1/{kind}", headers=KEY, timeout=30).json()
     for row in rows:
         if row.get("name") == name and row.get("implementation") == "Antra":
             return row.get("id")
@@ -59,7 +85,7 @@ for label, kind, path, payload in [
     if pid:
         payload["id"] = pid
     try:
-        r = requests.post(B + path, headers=K, json=payload, timeout=90)
+        r = requests.post(LIDARR + path, headers=KEY, json=payload, timeout=90)
         print(f"{label}: HTTP {r.status_code}")
         try:
             body = r.json()

@@ -1,20 +1,34 @@
 """
-E2E baseline setup for the dev Lidarr instance (idempotent):
+E2E baseline setup for a dev Lidarr instance (idempotent):
   1. root folder for the dev library
   2. enable the Antra protocol in the default delay profile
   3. Antra indexer (tests first, then adds if missing)
   4. Antra download client (tests first, then adds if missing)
-Run with the both dev Lidarr and the bridge up.
+
+Configuration via environment variables:
+  LIDARR_URL           Lidarr base URL     (default http://127.0.0.1:8688)
+  LIDARR_API_KEY       Lidarr API key      (required)
+  BRIDGE_URL           bridge base URL     (default http://127.0.0.1:8890)
+  ANTRA_LIDARR_ROOT    dev checkout root   (default C:\\antra-lidarr)
+  ANTRA_STAGING        staging dir as Lidarr sees it (default <root>\\staging)
+  ANTRA_LIBRARY        library root        (default <root>\\dev\\library)
 """
+import os
 import sys
 
 import requests
 
-LIDARR = "http://127.0.0.1:8688"
-KEY = {"X-Api-Key": "<dev-api-key>"}
-BRIDGE = "http://127.0.0.1:8890"
-STAGING = "<antra-lidarr>\\staging"
-LIBRARY = "<antra-lidarr>\\dev\\library"
+ROOT = os.environ.get("ANTRA_LIDARR_ROOT", "C:\\antra-lidarr")
+LIDARR = os.environ.get("LIDARR_URL", "http://127.0.0.1:8688")
+API_KEY = os.environ.get("LIDARR_API_KEY", "")
+BRIDGE = os.environ.get("BRIDGE_URL", "http://127.0.0.1:8890")
+STAGING = os.environ.get("ANTRA_STAGING", ROOT + "\\staging")
+LIBRARY = os.environ.get("ANTRA_LIBRARY", ROOT + "\\dev\\library")
+
+if not API_KEY:
+    sys.exit("set LIDARR_API_KEY (the dev instance's API key)")
+
+KEY = {"X-Api-Key": API_KEY}
 
 
 def get(path):
@@ -51,7 +65,6 @@ def main():
         if changed:
             r = send("PUT", f"/api/v1/delayprofile/{profile['id']}", profile)
             print("delayprofile update:", r.status_code, r.text[:120])
-        # else unchanged
 
     # 3. indexer
     indexer_payload = {

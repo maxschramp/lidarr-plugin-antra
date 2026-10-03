@@ -1,15 +1,28 @@
 """
-E2E: add the test artist (if missing), monitor the test albums, fire album
+E2E: add the test artists (if missing), monitor the target albums, fire album
 searches. Prints the album ids so the watcher can follow them.
+
+Configuration via environment variables:
+  LIDARR_URL           Lidarr base URL     (default http://127.0.0.1:8688)
+  LIDARR_API_KEY       Lidarr API key      (required)
+  ANTRA_LIDARR_ROOT    dev checkout root   (default C:\\antra-lidarr)
+  ANTRA_LIBRARY        library root        (default <root>\\dev\\library)
 """
+import os
 import sys
 import time
 
 import requests
 
-LIDARR = "http://127.0.0.1:8688"
-KEY = {"X-Api-Key": "<dev-api-key>"}
-LIBRARY = "<antra-lidarr>\\dev\\library"
+ROOT = os.environ.get("ANTRA_LIDARR_ROOT", "C:\\antra-lidarr")
+LIDARR = os.environ.get("LIDARR_URL", "http://127.0.0.1:8688")
+API_KEY = os.environ.get("LIDARR_API_KEY", "")
+LIBRARY = os.environ.get("ANTRA_LIBRARY", ROOT + "\\dev\\library")
+
+if not API_KEY:
+    sys.exit("set LIDARR_API_KEY (the dev instance's API key)")
+
+KEY = {"X-Api-Key": API_KEY}
 
 TARGETS = [
     ("Daft Punk", "Random Access Memories", 2013),
