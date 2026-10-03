@@ -63,7 +63,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           echo "Changelog:" > changelog.txt
-          git log --oneline $(git describe --tags --abbrev=0)..HEAD | awk '{print "- " substr($0, index($0,$2))}' >> changelog.txt
+          BASE=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          git log --oneline $BASE..HEAD | awk '{print "- " substr($0, index($0,$2))}' >> changelog.txt
       - name: Display Changelog
         if: github.ref == 'refs/heads/main'
         run: cat changelog.txt
