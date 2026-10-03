@@ -17,10 +17,12 @@ namespace NzbDrone.Core.Indexers.Antra
 
         public IndexerPageableRequestChain GetRecentRequests()
         {
-            // RSS is not supported; this nominal request only exists so the
-            // indexer health test has something harmless to hit (bridge /health).
+            // RSS is not supported. GetRecentRequests doubles as the indexer
+            // "Test" probe, and Lidarr's test only passes when the probe
+            // returns a real result, so it resolves a well-known album through
+            // the bridge (mirrors TrevTV's rickroll probe pattern).
             var chain = new IndexerPageableRequestChain();
-            chain.AddTier(new[] { HealthRequest() });
+            chain.AddTier(new[] { RecentProbeRequest() });
             return chain;
         }
 
@@ -37,11 +39,21 @@ namespace NzbDrone.Core.Indexers.Antra
             return new IndexerPageableRequestChain();
         }
 
-        private IndexerRequest HealthRequest()
+        private IndexerRequest RecentProbeRequest()
         {
-            var request = new IndexerRequest($"{BaseUrl}/health", HttpAccept.Json);
-            request.HttpRequest.RequestTimeout = TimeSpan.FromSeconds(30);
+            var body = new JObject
+            {
+                ["artist"] = "Daft Punk",
+                ["album"] = "Random Access Memories",
+                ["year"] = 2013
+            };
+
+            var request = new IndexerRequest($"{BaseUrl}/resolve", HttpAccept.Json);
+            request.HttpRequest.Method = System.Net.Http.HttpMethod.Post;
+            request.HttpRequest.Headers.ContentType = "application/json";
+            request.HttpRequest.RequestTimeout = TimeSpan.FromSeconds(Math.Max(10, Settings.TimeoutSeconds));
             ApplyToken(request.HttpRequest);
+            request.HttpRequest.SetContent(body.ToString(Formatting.None));
             return request;
         }
 
@@ -49,7 +61,7 @@ namespace NzbDrone.Core.Indexers.Antra
         {
             var artist = criteria.Artist?.Name ?? string.Empty;
             var albumTitle = criteria.AlbumTitle ?? string.Empty;
-            var tracks = ExtractTracks(criteria);
+            var tracklists = ExtractTracklists(criteria);
 
             var body = new JObject
             {
@@ -62,9 +74,21 @@ namespace NzbDrone.Core.Indexers.Antra
                 body["year"] = criteria.AlbumYear;
             }
 
-            if (tracks.Count > 0)
+            if (tracklists.Count > 0)
             {
-                body["tracks"] = JArray.FromObject(tracks);
+                body["tracks"] = JArray.FromObject(tracklists[0]);
+
+                if (tracklists.Count > 1)
+                {
+                    var alternates = new JArray();
+
+                    foreach (var tracklist in tracklists.Skip(1))
+                    {
+                        alternates.Add(JArray.FromObject(tracklist));
+                    }
+
+                    body["alternates"] = alternates;
+                }
             }
 
             var request = new IndexerRequest($"{BaseUrl}/resolve", HttpAccept.Json);
@@ -77,15 +101,19 @@ namespace NzbDrone.Core.Indexers.Antra
         }
 
         /// <summary>
-        /// The expected tracklist for the album being searched, read from the
-        /// first monitored (or any-release-ok) album release that carries
-        /// tracks. The bridge validates its Deezer edition against this list,
-        /// which is what stops it from grabbing a deluxe/remaster with a
-        /// different track count.
+        /// The expected tracklists for the album being searched, read from the
+        /// album's releases. Lidarr stores one row per release (original,
+        /// deluxe, anniversary, ...) and any of them is a legitimate target,
+        /// so up to six unique tracklists travel with the search: the
+        /// monitored release first, then the rest. The bridge validates its
+        /// Deezer edition against any of them, which is what stops it from
+        /// grabbing an edition with a different track count.
         /// </summary>
-        private static List<JObject> ExtractTracks(AlbumSearchCriteria criteria)
+        private const int MaxTracklists = 6;
+
+        private static List<List<JObject>> ExtractTracklists(AlbumSearchCriteria criteria)
         {
-            var result = new List<JObject>();
+            var result = new List<List<JObject>>();
             var album = criteria.Albums?.FirstOrDefault();
 
             if (album == null)
@@ -109,15 +137,19 @@ namespace NzbDrone.Core.Indexers.Antra
                 return result;
             }
 
-            var eligible = releases.Where(r => r.Monitored || album.AnyReleaseOk).ToList();
+            var ordered = releases
+                .OrderByDescending(r => r.Monitored)
+                .ToList();
 
-            if (eligible.Count == 0)
-            {
-                eligible = releases;
-            }
+            var seenCounts = new HashSet<int>();
 
-            foreach (var release in eligible)
+            foreach (var release in ordered)
             {
+                if (result.Count >= MaxTracklists)
+                {
+                    break;
+                }
+
                 List<Track> releaseTracks = null;
 
                 try
@@ -134,6 +166,13 @@ namespace NzbDrone.Core.Indexers.Antra
                     continue;
                 }
 
+                if (!seenCounts.Add(releaseTracks.Count))
+                {
+                    continue;
+                }
+
+                var tracklist = new List<JObject>();
+
                 foreach (var track in releaseTracks
                     .OrderBy(t => t.MediumNumber)
                     .ThenBy(t => t.AbsoluteTrackNumber))
@@ -148,10 +187,10 @@ namespace NzbDrone.Core.Indexers.Antra
                         entry["duration_s"] = Math.Round(track.Duration / 1000.0, 1);
                     }
 
-                    result.Add(entry);
+                    tracklist.Add(entry);
                 }
 
-                break;
+                result.Add(tracklist);
             }
 
             return result;

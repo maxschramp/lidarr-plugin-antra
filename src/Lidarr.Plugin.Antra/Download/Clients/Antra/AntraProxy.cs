@@ -41,7 +41,7 @@ namespace NzbDrone.Plugin.Antra
 
         public List<DownloadClientItem> GetQueue(AntraSettings settings)
         {
-            var response = _httpClient.Execute(Request(settings, "/jobs?limit=100"));
+            var response = _httpClient.Execute(Request(settings, "/jobs?limit=100&origin=lidarr"));
             EnsureSuccess(response);
 
             var jobs = JObject.Parse(response.Content)["jobs"] as JArray ?? new JArray();
@@ -66,6 +66,7 @@ namespace NzbDrone.Plugin.Antra
                 ["artist"] = artistName,
                 ["album"] = albumTitle,
                 ["deezer_url"] = release.DownloadUrl,
+                ["origin"] = "lidarr",
                 ["format"] = settings.Format.IsNullOrWhiteSpace() ? null : settings.Format,
                 ["sources"] = settings.Sources.IsNullOrWhiteSpace() ? null : settings.Sources
             };
